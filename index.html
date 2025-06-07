@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>番茄鐘</title>
+    <!-- 引入 Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 自定義字體 */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8; /* 淺灰色背景 */
+        }
+        /* 按鈕基本樣式 */
+        .btn {
+            @apply px-6 py-3 rounded-xl font-semibold transition-all duration-300 transform hover:scale-105 shadow-lg;
+        }
+        /* 主要按鈕樣式 */
+        .btn-primary {
+            @apply bg-blue-600 text-white hover:bg-blue-700;
+        }
+        /* 次要按鈕樣式 */
+        .btn-secondary {
+            @apply bg-gray-300 text-gray-800 hover:bg-gray-400;
+        }
+        /* 模式切換按鈕樣式 */
+        .mode-btn {
+            @apply px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+        }
+        .mode-btn.active {
+            @apply bg-blue-500 text-white;
+        }
+        .mode-btn:not(.active) {
+            @apply text-gray-700 hover:bg-gray-200;
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md text-center">
+        <h1 class="text-4xl font-extrabold text-gray-800 mb-8">番茄鐘</h1>
+
+        <!-- 模式切換按鈕 -->
+        <div class="flex justify-center space-x-3 mb-8 bg-gray-100 p-2 rounded-2xl">
+            <button id="pomodoro-mode-btn" class="mode-btn active">番茄工作</button>
+            <button id="short-break-mode-btn" class="mode-btn">短暫休息</button>
+            <button id="long-break-mode-btn" class="mode-btn">長休息</button>
+        </div>
+
+        <!-- 計時器顯示 -->
+        <div id="timer-display" class="text-8xl font-bold text-gray-900 mb-10 tracking-tight">
+            25:00
+        </div>
+
+        <!-- 控制按鈕 -->
+        <div class="flex justify-center space-x-6">
+            <button id="start-btn" class="btn btn-primary">開始</button>
+            <button id="pause-btn" class="btn btn-secondary" disabled>暫停</button>
+            <button id="reset-btn" class="btn btn-secondary">重置</button>
+        </div>
+
+        <!-- 音訊通知 -->
+        <audio id="timer-end-audio" src="https://www.soundjay.com/buttons/beep-07a.mp3" preload="auto"></audio>
+    </div>
+
+    <script>
+        // 定義計時器模式及其時間（以秒為單位）
+        const TIME_MODES = {
+            pomodoro: 25 * 60,
+            shortBreak: 5 * 60,
+            longBreak: 15 * 60
+        };
+
+        let currentMode = 'pomodoro'; // 當前模式
+        let timeLeft = TIME_MODES[currentMode]; // 剩餘時間
+        let timerInterval; // 計時器間隔 ID
+        let isPaused = true; // 是否暫停
+
+        // 獲取 DOM 元素
+        const timerDisplay = document.getElementById('timer-display');
+        const startBtn = document.getElementById('start-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const resetBtn = document.getElementById('reset-btn');
+        const pomodoroModeBtn = document.getElementById('pomodoro-mode-btn');
+        const shortBreakModeBtn = document.getElementById('short-break-mode-btn');
+        const longBreakModeBtn = document.getElementById('long-break-mode-btn');
+        const timerEndAudio = document.getElementById('timer-end-audio');
+
+        /**
+         * 更新計時器顯示
+         * @param {number} seconds - 要顯示的總秒數
+         */
+        function updateTimerDisplay(seconds) {
+            const minutes = Math.floor(seconds / 60);
+            const remainingSeconds = seconds % 60;
+            timerDisplay.textContent = `${minutes < 10 ? '0' : ''}${minutes}:${remainingSeconds < 10 ? '0' : ''}${remainingSeconds}`;
+        }
+
+        /**
+         * 切換計時器模式
+         * @param {string} mode - 要切換到的模式 ('pomodoro', 'shortBreak', 'longBreak')
+         */
+        function switchMode(mode) {
+            currentMode = mode;
+            timeLeft = TIME_MODES[currentMode];
+            isPaused = true; // 切換模式時總是暫停
+            clearInterval(timerInterval); // 清除任何正在運行的計時器
+            updateTimerDisplay(timeLeft);
+            updateButtonStates();
+            updateModeButtons();
+        }
+
+        /**
+         * 更新模式按鈕的活動狀態
+         */
+        function updateModeButtons() {
+            pomodoroModeBtn.classList.remove('active');
+            shortBreakModeBtn.classList.remove('active');
+            longBreakModeBtn.classList.remove('active');
+
+            if (currentMode === 'pomodoro') {
+                pomodoroModeBtn.classList.add('active');
+            } else if (currentMode === 'shortBreak') {
+                shortBreakModeBtn.classList.add('active');
+            } else if (currentMode === 'longBreak') {
+                longBreakModeBtn.classList.add('active');
+            }
+        }
+
+        /**
+         * 更新控制按鈕的啟用/禁用狀態
+         */
+        function updateButtonStates() {
+            startBtn.disabled = !isPaused && timeLeft > 0;
+            pauseBtn.disabled = isPaused;
+            resetBtn.disabled = false; // 重置按鈕總是啟用
+        }
+
+        /**
+         * 啟動計時器
+         */
+        function startTimer() {
+            if (!isPaused) return; // 如果計時器已經在運行，則不執行任何操作
+
+            isPaused = false;
+            updateButtonStates();
+
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay(timeLeft);
+
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    timerEndAudio.play(); // 播放結束音效
+                    isPaused = true; // 計時器結束後自動暫停
+                    updateButtonStates();
+
+                    // 提示用戶切換模式
+                    let nextModeMessage = "";
+                    if (currentMode === 'pomodoro') {
+                        nextModeMessage = "工作時間結束！該休息了。";
+                    } else if (currentMode === 'shortBreak') {
+                        nextModeMessage = "短暫休息結束！該繼續工作了。";
+                    } else if (currentMode === 'longBreak') {
+                        nextModeMessage = "長休息結束！該繼續工作了。";
+                    }
+                    // 使用自定義模態框代替 alert()
+                    showMessageBox(nextModeMessage);
+                }
+            }, 1000); // 每秒更新一次
+        }
+
+        /**
+         * 暫停計時器
+         */
+        function pauseTimer() {
+            if (isPaused) return; // 如果計時器已經暫停，則不執行任何操作
+
+            isPaused = true;
+            clearInterval(timerInterval);
+            updateButtonStates();
+        }
+
+        /**
+         * 重置計時器到當前模式的初始時間
+         */
+        function resetTimer() {
+            pauseTimer(); // 首先暫停計時器
+            timeLeft = TIME_MODES[currentMode];
+            updateTimerDisplay(timeLeft);
+            isPaused = true; // 重置後處於暫停狀態
+            updateButtonStates();
+        }
+
+        /**
+         * 顯示自定義訊息框
+         * @param {string} message - 要顯示的訊息
+         */
+        function showMessageBox(message) {
+            // 檢查是否已存在訊息框，避免重複創建
+            let messageBox = document.getElementById('custom-message-box');
+            if (!messageBox) {
+                messageBox = document.createElement('div');
+                messageBox.id = 'custom-message-box';
+                messageBox.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50';
+                messageBox.innerHTML = `
+                    <div class="bg-white p-8 rounded-xl shadow-2xl text-center max-w-sm w-full">
+                        <p id="message-content" class="text-lg font-semibold text-gray-800 mb-6"></p>
+                        <button id="message-box-ok-btn" class="btn btn-primary w-full">好的</button>
+                    </div>
+                `;
+                document.body.appendChild(messageBox);
+            }
+
+            document.getElementById('message-content').textContent = message;
+            messageBox.classList.remove('hidden');
+
+            document.getElementById('message-box-ok-btn').onclick = () => {
+                messageBox.classList.add('hidden');
+            };
+        }
+
+        // 添加事件監聽器
+        startBtn.addEventListener('click', startTimer);
+        pauseBtn.addEventListener('click', pauseTimer);
+        resetBtn.addEventListener('click', resetTimer);
+
+        pomodoroModeBtn.addEventListener('click', () => switchMode('pomodoro'));
+        shortBreakModeBtn.addEventListener('click', () => switchMode('shortBreak'));
+        longBreakModeBtn.addEventListener('click', () => switchMode('longBreak'));
+
+        // 初始化顯示和按鈕狀態
+        window.onload = function() {
+            updateTimerDisplay(timeLeft);
+            updateButtonStates();
+            updateModeButtons(); // 確保首次載入時模式按鈕狀態正確
+        };
+    </script>
+</body>
+</html>
